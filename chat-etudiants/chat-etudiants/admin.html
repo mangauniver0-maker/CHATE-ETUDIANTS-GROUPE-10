@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Admin - Chat Étudiants</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; background: #f4f4f5; color: #222; }
+  .box { max-width: 720px; margin: 24px auto; background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 16px; }
+  h1 { font-size: 20px; margin: 0 0 12px; }
+  h2 { font-size: 16px; margin: 18px 0 8px; color: #444; }
+  input, button { font: inherit; padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; }
+  button { background: #2563eb; color: #fff; border: 0; cursor: pointer; }
+  button:hover { background: #1d4ed8; }
+  #login-row { display: flex; gap: 8px; }
+  #login-row input { flex: 1; }
+  .err { color: #c00; font-size: 14px; margin-top: 8px; min-height: 18px; }
+  #panel { display: none; }
+  .cards { display: flex; gap: 10px; flex-wrap: wrap; }
+  .card { flex: 1; min-width: 140px; background: #fafafa; border: 1px solid #eee; border-radius: 6px; padding: 10px; }
+  .card .v { font-size: 22px; font-weight: 600; color: #2563eb; }
+  .card .l { font-size: 12px; color: #666; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 14px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eee; }
+  th { background: #fafafa; }
+  .bar { background: #2563eb; height: 14px; border-radius: 3px; }
+  .hour-row { display: flex; align-items: center; gap: 8px; font-size: 12px; margin: 2px 0; }
+  .hour-row span:first-child { width: 30px; color: #666; }
+  .hour-row span:last-child { width: 30px; color: #666; text-align: right; }
+  .msg { padding: 6px 8px; margin: 4px 0; border-radius: 6px; background: #fafafa; border: 1px solid #eee; font-size: 14px; }
+  .msg b { color: #2563eb; }
+  .msg .t { color: #888; font-size: 12px; margin-left: 6px; }
+  a { color: #2563eb; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>📊 Admin - Statistiques</h1>
+  <div id="login">
+    <p>Entre le code admin :</p>
+    <div id="login-row">
+      <input id="code" type="password" placeholder="Code admin" />
+      <button id="enter-btn">Voir les stats</button>
+    </div>
+    <div class="err" id="login-err"></div>
+    <p><a href="/">← Retour au chat</a></p>
+  </div>
+  <div id="panel">
+    <div class="cards">
+      <div class="card"><div class="v" id="s-total">0</div><div class="l">Messages totaux</div></div>
+      <div class="card"><div class="v" id="s-active">0</div><div class="l">Étudiants actifs</div></div>
+      <div class="card"><div class="v" id="s-students">0</div><div class="l">Étudiants inscrits</div></div>
+      <div class="card"><div class="v" id="s-peak">-</div><div class="l">Heure la plus active</div></div>
+    </div>
+    <h2>Activité par étudiant</h2>
+    <table><thead><tr><th>Pseudo</th><th>Messages</th><th>Dernier message</th></tr></thead><tbody id="t-students"></tbody></table>
+    <h2>Activité par heure</h2>
+    <div id="hours"></div>
+    <h2>10 derniers messages</h2>
+    <div id="last"></div>
+    <p style="margin-top:14px;"><a href="/">← Retour au chat</a> · <button id="refresh-btn" style="font-size:13px;padding:4px 8px;">Rafraîchir</button></p>
+  </div>
+</div>
+<script>
+  const API = window.location.origin + "/api";
+  let adminCode = "";
+  const $ = (id) => document.getElementById(id);
+
+  async function load() {
+    const r = await fetch(API + "/admin/stats?code=" + encodeURIComponent(adminCode));
+    if (!r.ok) { $("login-err").textContent = "Code admin invalide."; return false; }
+    const d = await r.json();
+    $("s-total").textContent = d.total_messages;
+    $("s-active").textContent = d.active_students;
+    $("s-students").textContent = d.total_students;
+    const peak = d.by_hour.reduce((a,b) => b.count > a.count ? b : a, {hour:0,count:0});
+    $("s-peak").textContent = peak.count ? peak.hour + "h" : "-";
+    $("t-students").innerHTML = d.students.map(s => `<tr><td>${esc(s.pseudo)}</td><td>${s.messages}</td><td>${s.last_seen ? fmt(s.last_seen) : "—"}</td></tr>`).join("");
+    const maxH = Math.max(1, ...d.by_hour.map(h => h.count));
+    $("hours").innerHTML = d.by_hour.map(h => `<div class="hour-row"><span>${h.hour}h</span><div class="bar" style="width:${(h.count/maxH)*100}%"></div><span>${h.count}</span></div>`).join("");
+    $("last").innerHTML = d.last_messages.length ? d.last_messages.map(m => `<div class="msg"><b>${esc(m.pseudo)}</b><span class="t">${fmt(m.ts)}</span><div>${esc(m.text)}</div></div>`).join("") : "<p style='color:#888;font-size:14px;'>Aucun message.</p>";
+    return true;
+  }
+
+  async function login() {
+    adminCode = $("code").value.trim();
+    $("login-err").textContent = "";
+    if (!adminCode) { $("login-err").textContent = "Entre un code."; return; }
+    if (await load()) {
+      $("login").style.display = "none";
+      $("panel").style.display = "block";
+    }
+  }
+
+  function esc(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
+  function fmt(iso){ try { const d = new Date(iso); return d.toLocaleDateString("fr-FR") + " " + d.toLocaleTimeString("fr-FR", {hour:"2-digit", minute:"2-digit"}); } catch(e){ return ""; } }
+
+  $("enter-btn").addEventListener("click", login);
+  $("code").addEventListener("keydown", e => { if (e.key === "Enter") login(); });
+  $("refresh-btn").addEventListener("click", load);
+</script>
+</body>
+</html>
