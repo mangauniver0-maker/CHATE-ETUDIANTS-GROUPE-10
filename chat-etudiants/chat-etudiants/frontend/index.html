@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Chat Étudiants</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; background: #f4f4f5; color: #222; }
+  .box { max-width: 640px; margin: 24px auto; background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 16px; }
+  h1 { font-size: 20px; margin: 0 0 12px; }
+  input, button { font: inherit; padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; }
+  button { background: #2563eb; color: #fff; border: 0; cursor: pointer; }
+  button:hover { background: #1d4ed8; }
+  #login-row, #send-row { display: flex; gap: 8px; }
+  #login-row input, #send-row input { flex: 1; }
+  #messages { height: 360px; overflow-y: auto; border: 1px solid #eee; border-radius: 6px; padding: 8px; margin-bottom: 10px; background: #fafafa; }
+  .msg { padding: 6px 8px; margin: 4px 0; border-radius: 6px; background: #fff; border: 1px solid #eee; }
+  .msg b { color: #2563eb; }
+  .msg .t { color: #888; font-size: 12px; margin-left: 6px; }
+  .err { color: #c00; font-size: 14px; margin-top: 8px; min-height: 18px; }
+  #chat { display: none; }
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>💬 Chat Étudiants</h1>
+  <div id="login">
+    <p>Entre ton code d'accès pour rejoindre le groupe :</p>
+    <div id="login-row">
+      <input id="code" data-testid="login-code-input" placeholder="Ex: ALICE2026" />
+      <button id="enter-btn" data-testid="login-submit-button">Entrer</button>
+    </div>
+    <div class="err" id="login-err" data-testid="login-error"></div>
+    <p style="font-size:12px;color:#888;margin-top:10px;"><a href="/admin.html" style="color:#888;">Admin</a></p>
+  </div>
+  <div id="chat">
+    <p>Connecté en tant que <b id="who" data-testid="current-pseudo"></b></p>
+    <div id="messages" data-testid="messages-list"></div>
+    <div id="send-row">
+      <input id="text" data-testid="message-input" placeholder="Écris un message…" maxlength="500" />
+      <button id="send-btn" data-testid="send-button">Envoyer</button>
+    </div>
+    <div class="err" id="chat-err"></div>
+  </div>
+</div>
+<script>
+  const API = (window.location.origin) + "/api";
+  let code = "", pseudo = "";
+  const $ = (id) => document.getElementById(id);
+
+  async function login() {
+    const c = $("code").value.trim().toUpperCase();
+    $("login-err").textContent = "";
+    if (!c) { $("login-err").textContent = "Entre un code."; return; }
+    const r = await fetch(API + "/login", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({code: c}) });
+    if (!r.ok) { $("login-err").textContent = "Code invalide."; return; }
+    const data = await r.json();
+    code = c; pseudo = data.pseudo;
+    $("who").textContent = pseudo;
+    $("login").style.display = "none";
+    $("chat").style.display = "block";
+    refresh(); setInterval(refresh, 2000);
+  }
+
+  async function refresh() {
+    try {
+      const r = await fetch(API + "/messages");
+      const list = await r.json();
+      const box = $("messages");
+      const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 20;
+      box.innerHTML = list.map(m => `<div class="msg"><b>${escape(m.pseudo)}</b><span class="t">${fmt(m.ts)}</span><div>${escape(m.text)}</div></div>`).join("");
+      if (atBottom) box.scrollTop = box.scrollHeight;
+    } catch(e) {}
+  }
+
+  async function send() {
+    const t = $("text").value.trim();
+    $("chat-err").textContent = "";
+    if (!t) return;
+    const r = await fetch(API + "/messages", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({code, text: t}) });
+    if (!r.ok) { $("chat-err").textContent = "Erreur d'envoi."; return; }
+    $("text").value = ""; refresh();
+  }
+
+  function escape(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
+  function fmt(iso){ try { return new Date(iso).toLocaleTimeString("fr-FR", {hour:"2-digit", minute:"2-digit"}); } catch(e){ return ""; } }
+
+  $("enter-btn").addEventListener("click", login);
+  $("code").addEventListener("keydown", e => { if (e.key === "Enter") login(); });
+  $("send-btn").addEventListener("click", send);
+  $("text").addEventListener("keydown", e => { if (e.key === "Enter") send(); });
+</script>
+<div id="root"></div>
+</body>
+</html>
